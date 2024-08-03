@@ -1,10 +1,10 @@
 [package]
-name = "rusty_ytdl"
-version = "0.7.4"
+name = "youtui-vendored-rusty_ytdl"
+version = "0.7.4-youtui-vendored.4"
 authors = ["Mithronn"]
 edition = "2021"
-description = "A Rust library for Youtube video searcher and downloader"
-repository = "https://github.com/Mithronn/rusty-ytdl"
+description = "VENDORED LIBRARY FOR YOUTUI - DO NOT USE"
+repository = "https://github.com/nick42d/rusty_ytdl"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["youtube", "downloader", "ytdl", "youtube-dl", "searcher"]
