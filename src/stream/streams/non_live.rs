@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 
 use crate::constants::{DEFAULT_HEADERS, DEFAULT_MAX_RETRIES};
-use crate::stream::streams::Stream;
+use crate::stream::streams::YoutubeStream;
 use crate::structs::{CustomRetryableStrategy, VideoError};
 
 #[cfg(feature = "ffmpeg")]
@@ -138,7 +138,7 @@ impl NonLiveStream {
 }
 
 #[async_trait]
-impl Stream for NonLiveStream {
+impl YoutubeStream for NonLiveStream {
     async fn chunk(&self) -> Result<Option<Bytes>, VideoError> {
         #[cfg(feature = "ffmpeg")]
         {

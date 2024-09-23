@@ -1,7 +1,7 @@
 use crate::constants::{DEFAULT_HEADERS, DEFAULT_MAX_RETRIES};
 use crate::stream::{
     encryption::Encryption, media_format::MediaFormat, remote_data::RemoteData, segment::Segment,
-    streams::Stream,
+    streams::YoutubeStream,
 };
 use crate::structs::{CustomRetryableStrategy, VideoError};
 use crate::utils::{get_html, make_absolute_url};
@@ -170,7 +170,7 @@ impl LiveStream {
 }
 
 #[async_trait]
-impl Stream for LiveStream {
+impl YoutubeStream for LiveStream {
     async fn chunk(&self) -> Result<Option<Bytes>, VideoError> {
         let segments = self.segments().await;
 

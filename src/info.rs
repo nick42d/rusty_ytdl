@@ -17,7 +17,7 @@ use crate::structs::FFmpegArgs;
 use crate::{
     constants::{BASE_URL, DEFAULT_DL_CHUNK_SIZE, DEFAULT_MAX_RETRIES, INNERTUBE_CLIENT},
     info_extras::{get_media, get_related_videos},
-    stream::{NonLiveStream, NonLiveStreamOptions, Stream},
+    stream::{NonLiveStream, NonLiveStreamOptions, YoutubeStream},
     structs::{
         CustomRetryableStrategy, PlayerResponse, VideoError, VideoInfo, VideoOptions, YTConfig,
     },
@@ -292,7 +292,7 @@ impl<'opts> Video<'opts> {
     ///           println!("{:#?}", chunk);
     ///     }
     /// ```
-    pub async fn stream(&self) -> Result<Box<dyn Stream + Send + Sync>, VideoError> {
+    pub async fn stream(&self) -> Result<Box<dyn YoutubeStream + Send + Sync>, VideoError> {
         let client = &self.client;
 
         let info = self.get_info().await?;
@@ -386,7 +386,7 @@ impl<'opts> Video<'opts> {
     pub async fn stream_with_ffmpeg(
         &self,
         ffmpeg_args: Option<FFmpegArgs>,
-    ) -> Result<Box<dyn Stream + Send + Sync>, VideoError> {
+    ) -> Result<Box<dyn YoutubeStream + Send + Sync>, VideoError> {
         let client = &self.client;
 
         let info = self.get_info().await?;

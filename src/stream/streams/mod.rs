@@ -31,7 +31,7 @@ use crate::constants::DEFAULT_HEADERS;
 use crate::VideoError;
 
 #[async_trait]
-pub trait Stream {
+pub trait YoutubeStream {
     /// Stream a chunk of the [`Bytes`]
     ///
     /// When the bytes has been exhausted, this will return `None`.
