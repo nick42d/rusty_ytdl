@@ -99,7 +99,11 @@ async fn download(args: DownloadArgs) -> Result<()> {
     let download_file = args
         .filename
         .unwrap_or(format!("{}.mp3", video_info.video_details.video_id).into());
-    let video_size = stream.content_length();
+
+    let video_size = match stream {
+        rusty_ytdl::stream::YoutubeStreamEnum::Live(stream) => todo!(),
+        rusty_ytdl::stream::YoutubeStreamEnum::NonLive(stream) => stream.content_length(),
+    };
 
     let pb = args.log.init_progress_bar(video_size as u64);
 
@@ -123,7 +127,7 @@ async fn download(args: DownloadArgs) -> Result<()> {
         ) {
             let mut stdout = io::stdout();
             let mut stdout = Pin::new(&mut stdout);
-
+            todo!();
             while let Some(bytes) = stream.chunk().await.unwrap() {
                 if let Err(err) = stdout.write_all(&bytes).await {
                     pb_clone.finish_and_clear();

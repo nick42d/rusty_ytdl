@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-use crate::blocking::stream::Stream;
+use crate::blocking::stream::YoutubeStream;
 use crate::stream::{LiveStream as AsyncLiveStream, LiveStreamOptions};
 use crate::{block_async, VideoError};
 
@@ -12,9 +12,9 @@ impl LiveStream {
     }
 }
 
-impl Stream for LiveStream {
+impl YoutubeStream for LiveStream {
     fn chunk(&self) -> Result<Option<Bytes>, VideoError> {
-        use crate::stream::Stream;
+        use crate::stream::YoutubeStream;
         Ok(block_async!(self.0.chunk())?)
     }
 }

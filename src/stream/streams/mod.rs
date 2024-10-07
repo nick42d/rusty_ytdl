@@ -7,6 +7,7 @@ use bytes::Bytes;
 
 #[cfg(feature = "ffmpeg")]
 use bytes::BytesMut;
+use futures::Stream;
 
 #[cfg(feature = "ffmpeg")]
 use std::{process::Stdio, sync::Arc};
@@ -43,6 +44,12 @@ pub trait YoutubeStream {
     fn content_length(&self) -> usize {
         0
     }
+}
+
+pub enum YoutubeStreamEnum {
+    #[cfg(feature = "live")]
+    Live(live::LiveStream),
+    NonLive(non_live::NonLiveStream),
 }
 
 #[cfg(feature = "ffmpeg")]
@@ -106,7 +113,8 @@ impl FFmpegStream {
         let write_stdin_task = tokio::spawn(async move {
             while let Some(data) = rx.recv().await {
                 if let Err(err) = stdin.write_all(&data).await {
-                    return Err(VideoError::FFmpeg(err.to_string())); // Error or channel closed
+                    return Err(VideoError::FFmpeg(err.to_string())); // Error or
+                                                                     // channel closed
                 }
             }
             Ok(())
@@ -198,4 +206,46 @@ impl Drop for FFmpegStream {
             handle.abort();
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Video, VideoOptions};
+    use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
+
+    #[tokio::test]
+    async fn test_stream() {
+        let options = VideoOptions {
+            download_options: crate::DownloadOptions {
+                dl_chunk_size: Some(100000),
+            },
+            filter: crate::VideoSearchOptions::Audio,
+            ..Default::default()
+        };
+        let video = Video::new_with_options("FZ8BxMU3BYc", options).unwrap();
+        let stream = video.stream().await.unwrap();
+        let stream = match stream {
+            crate::stream::YoutubeStreamEnum::Live(stream) => todo!(),
+            crate::stream::YoutubeStreamEnum::NonLive(stream) => stream,
+        };
+        let song = stream
+            .into_stream_test()
+            .enumerate()
+            .map(|(idx, chunk)| {
+                println!("Received chunk {idx}");
+                chunk
+            })
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        assert!(!song.is_empty());
+    }
+    // #[tokio::test]
+    // async fn test_video() {
+    //     let video = Video::new("FZ8BxMU3BYc").unwrap();
+    //     let stream = video.stream().await.unwrap();
+    //     while let Some(_) = stream.chunk().await.unwrap() {
+    //         println!("Got a chunk");
+    //     }
+    // }
 }

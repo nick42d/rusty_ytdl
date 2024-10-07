@@ -8,7 +8,7 @@ async fn main() {
 
     let stream = video.stream().await.unwrap();
 
-    while let Some(chunk) = stream.chunk().await.unwrap() {
-        println!("{:#?}", chunk);
-    }
+    // while let Some(chunk) = stream.chunk().await.unwrap() {
+    //     println!("{:#?}", chunk);
+    // }
 }

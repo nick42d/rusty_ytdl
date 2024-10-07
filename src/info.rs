@@ -6,7 +6,12 @@ use reqwest::{
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use scraper::{Html, Selector};
-use std::{borrow::{Borrow, Cow}, path::Path, time::Duration};
+use std::{
+    borrow::{Borrow, Cow},
+    path::Path,
+    pin::Pin,
+    time::Duration,
+};
 use url::Url;
 
 #[cfg(feature = "live")]
@@ -17,7 +22,7 @@ use crate::structs::FFmpegArgs;
 use crate::{
     constants::{BASE_URL, DEFAULT_DL_CHUNK_SIZE, DEFAULT_MAX_RETRIES, INNERTUBE_CLIENT},
     info_extras::{get_media, get_related_videos},
-    stream::{NonLiveStream, NonLiveStreamOptions, YoutubeStream},
+    stream::{NonLiveStream, NonLiveStreamOptions, YoutubeStream, YoutubeStreamEnum},
     structs::{
         CustomRetryableStrategy, PlayerResponse, VideoError, VideoInfo, VideoOptions, YTConfig,
     },
@@ -32,7 +37,8 @@ use crate::{
 #[derive(Clone, derive_more::Display, derivative::Derivative)]
 #[display("Video({video_id})")]
 #[derivative(Debug, PartialEq, Eq)]
-/// If a video was created with a reference to options, it is tied to their lifetime `'opts`.
+/// If a video was created with a reference to options, it is tied to their
+/// lifetime `'opts`.
 pub struct Video<'opts> {
     video_id: String,
     options: Cow<'opts, VideoOptions>,
@@ -41,7 +47,8 @@ pub struct Video<'opts> {
 }
 
 impl Video<'static> {
-    /// Crate [`Video`] struct to get info or download with default [`VideoOptions`]
+    /// Crate [`Video`] struct to get info or download with default
+    /// [`VideoOptions`]
     #[cfg_attr(feature = "performance_analysis", flamer::flame)]
     pub fn new(url_or_id: impl Into<String>) -> Result<Self, VideoError> {
         let video_id = get_video_id(&url_or_id.into()).ok_or(VideoError::VideoNotFound)?;
@@ -67,9 +74,10 @@ impl Video<'static> {
 }
 
 impl<'opts> Video<'opts> {
-    /// Crate [`Video`] struct to get info or download with custom [`VideoOptions`]
-    /// `VideoOptions` can be passed by value or by reference, if passed by
-    /// reference, returned `Video` will be tied to the lifetime of the `VideoOptions`.
+    /// Crate [`Video`] struct to get info or download with custom
+    /// [`VideoOptions`] `VideoOptions` can be passed by value or by
+    /// reference, if passed by reference, returned `Video` will be tied to
+    /// the lifetime of the `VideoOptions`.
     pub fn new_with_options(
         url_or_id: impl Into<String>,
         options: impl Into<Cow<'opts, VideoOptions>>,
@@ -187,7 +195,8 @@ impl<'opts> Video<'opts> {
             return Err(VideoError::VideoIsPrivate);
         }
 
-        // POToken experiment detected fallback to ios client (Webpage contains broken formats)
+        // POToken experiment detected fallback to ios client (Webpage contains broken
+        // formats)
         if check_experiments(&response) && !is_live(&player_response) {
             let ios_ytconfig = self
                 .get_player_ytconfig(
@@ -278,9 +287,9 @@ impl<'opts> Video<'opts> {
         Ok(info)
     }
 
-    /// Try to turn [`Stream`] implemented [`LiveStream`] or [`NonLiveStream`] depend on the video.
-    /// If function successfully return can download video chunk by chunk
-    /// # Example
+    /// Try to turn [`Stream`] implemented [`LiveStream`] or [`NonLiveStream`]
+    /// depend on the video. If function successfully return can download
+    /// video chunk by chunk # Example
     /// ```ignore
     ///     let video_url = "https://www.youtube.com/watch?v=FZ8BxMU3BYc";
     ///
@@ -292,7 +301,7 @@ impl<'opts> Video<'opts> {
     ///           println!("{:#?}", chunk);
     ///     }
     /// ```
-    pub async fn stream(&self) -> Result<Box<dyn YoutubeStream + Send + Sync>, VideoError> {
+    pub async fn stream(&self) -> Result<YoutubeStreamEnum, VideoError> {
         let client = &self.client;
 
         let info = self.get_info().await?;
@@ -314,7 +323,7 @@ impl<'opts> Video<'opts> {
                     stream_url: link,
                 })?;
 
-                return Ok(Box::new(stream));
+                return Ok(YoutubeStreamEnum::Live(stream));
             }
             #[cfg(not(feature = "live"))]
             {
@@ -361,13 +370,14 @@ impl<'opts> Video<'opts> {
             ffmpeg_args: None,
         })?;
 
-        Ok(Box::new(stream))
+        Ok(YoutubeStreamEnum::NonLive(stream))
     }
 
     #[cfg(feature = "ffmpeg")]
-    /// Try to turn [`Stream`] implemented [`LiveStream`] or [`NonLiveStream`] depend on the video with [`FFmpegArgs`].
-    /// If function successfully return can download video with applied ffmpeg filters and formats chunk by chunk
-    /// # Example
+    /// Try to turn [`Stream`] implemented [`LiveStream`] or [`NonLiveStream`]
+    /// depend on the video with [`FFmpegArgs`]. If function successfully
+    /// return can download video with applied ffmpeg filters and formats chunk
+    /// by chunk # Example
     /// ```ignore
     ///     let video_url = "https://www.youtube.com/watch?v=FZ8BxMU3BYc";
     ///
@@ -383,79 +393,79 @@ impl<'opts> Video<'opts> {
     ///           println!("{:#?}", chunk);
     ///     }
     /// ```
-    pub async fn stream_with_ffmpeg(
-        &self,
-        ffmpeg_args: Option<FFmpegArgs>,
-    ) -> Result<Box<dyn YoutubeStream + Send + Sync>, VideoError> {
-        let client = &self.client;
+    // pub async fn stream_with_ffmpeg(
+    //     &self,
+    //     ffmpeg_args: Option<FFmpegArgs>,
+    // ) -> Result<Box<dyn YoutubeStream + Send + Sync>, VideoError> {
+    //     let client = &self.client;
 
-        let info = self.get_info().await?;
-        let format = choose_format(&info.formats, &self.options)
-            .map_err(|_op| VideoError::VideoSourceNotFound)?;
+    //     let info = self.get_info().await?;
+    //     let format = choose_format(&info.formats, &self.options)
+    //         .map_err(|_op| VideoError::VideoSourceNotFound)?;
 
-        let link = format.url;
+    //     let link = format.url;
 
-        if link.is_empty() {
-            return Err(VideoError::VideoSourceNotFound);
-        }
+    //     if link.is_empty() {
+    //         return Err(VideoError::VideoSourceNotFound);
+    //     }
 
-        // Only check for HLS formats for live streams
-        if format.is_hls {
-            #[cfg(feature = "live")]
-            {
-                let stream = LiveStream::new(LiveStreamOptions {
-                    client: Some(client.clone()),
-                    stream_url: link,
-                })?;
+    //     // Only check for HLS formats for live streams
+    //     if format.is_hls {
+    //         #[cfg(feature = "live")]
+    //         {
+    //             let stream = LiveStream::new(LiveStreamOptions {
+    //                 client: Some(client.clone()),
+    //                 stream_url: link,
+    //             })?;
 
-                return Ok(Box::new(stream));
-            }
-            #[cfg(not(feature = "live"))]
-            {
-                return Err(VideoError::LiveStreamNotSupported);
-            }
-        }
+    //             return Ok(Box::new(stream));
+    //         }
+    //         #[cfg(not(feature = "live"))]
+    //         {
+    //             return Err(VideoError::LiveStreamNotSupported);
+    //         }
+    //     }
 
-        let dl_chunk_size = self
-            .options
-            .download_options
-            .dl_chunk_size
-            .unwrap_or(DEFAULT_DL_CHUNK_SIZE);
+    //     let dl_chunk_size = self
+    //         .options
+    //         .download_options
+    //         .dl_chunk_size
+    //         .unwrap_or(DEFAULT_DL_CHUNK_SIZE);
 
-        let start = 0;
-        let end = start + dl_chunk_size;
+    //     let start = 0;
+    //     let end = start + dl_chunk_size;
 
-        let mut content_length = format
-            .content_length
-            .unwrap_or("0".to_string())
-            .parse::<u64>()
-            .unwrap_or(0);
+    //     let mut content_length = format
+    //         .content_length
+    //         .unwrap_or("0".to_string())
+    //         .parse::<u64>()
+    //         .unwrap_or(0);
 
-        // Get content length from source url if content_length is 0
-        if content_length == 0 {
-            let content_length_response = client
-                .get(&link)
-                .send()
-                .await
-                .map_err(VideoError::ReqwestMiddleware)?
-                .content_length()
-                .ok_or(VideoError::VideoNotFound)?;
+    //     // Get content length from source url if content_length is 0
+    //     if content_length == 0 {
+    //         let content_length_response = client
+    //             .get(&link)
+    //             .send()
+    //             .await
+    //             .map_err(VideoError::ReqwestMiddleware)?
+    //             .content_length()
+    //             .ok_or(VideoError::VideoNotFound)?;
 
-            content_length = content_length_response;
-        }
+    //         content_length = content_length_response;
+    //     }
 
-        let stream = NonLiveStream::new(NonLiveStreamOptions {
-            client: Some(client.clone()),
-            link,
-            content_length,
-            dl_chunk_size,
-            start,
-            end,
-            ffmpeg_args,
-        })?;
+    //     let stream = NonLiveStream::new(NonLiveStreamOptions {
+    //         client: Some(client.clone()),
+    //         link,
+    //         content_length,
+    //         dl_chunk_size,
+    //         start,
+    //         end,
+    //         ffmpeg_args,
+    //     })?;
 
-        Ok(Box::new(stream))
-    }
+    //     Ok(Box::new(stream))
+    // }
 
     /// Download video directly to the file
     pub async fn download<P: AsRef<Path>>(&self, path: P) -> Result<(), VideoError> {
@@ -465,34 +475,45 @@ impl<'opts> Video<'opts> {
 
         let mut file = File::create(path).map_err(|e| VideoError::DownloadError(e.to_string()))?;
 
-        while let Some(chunk) = stream.chunk().await? {
-            file.write_all(&chunk)
-                .map_err(|e| VideoError::DownloadError(e.to_string()))?;
+        match stream {
+            YoutubeStreamEnum::Live(stream) => {
+                while let Some(chunk) = stream.chunk().await? {
+                    file.write_all(&chunk)
+                        .map_err(|e| VideoError::DownloadError(e.to_string()))?;
+                }
+            }
+            YoutubeStreamEnum::NonLive(stream) => {
+                while let Some(chunk) = stream.chunk().await? {
+                    file.write_all(&chunk)
+                        .map_err(|e| VideoError::DownloadError(e.to_string()))?;
+                }
+            }
         }
 
         Ok(())
     }
 
-    #[cfg(feature = "ffmpeg")]
-    /// Download video with ffmpeg args directly to the file
-    pub async fn download_with_ffmpeg<P: AsRef<Path>>(
-        &self,
-        path: P,
-        ffmpeg_args: Option<FFmpegArgs>,
-    ) -> Result<(), VideoError> {
-        use std::{fs::File, io::Write};
+    // #[cfg(feature = "ffmpeg")]
+    // /// Download video with ffmpeg args directly to the file
+    // pub async fn download_with_ffmpeg<P: AsRef<Path>>(
+    //     &self,
+    //     path: P,
+    //     ffmpeg_args: Option<FFmpegArgs>,
+    // ) -> Result<(), VideoError> {
+    //     use std::{fs::File, io::Write};
 
-        let stream = self.stream_with_ffmpeg(ffmpeg_args).await?;
+    //     let stream = self.stream_with_ffmpeg(ffmpeg_args).await?;
 
-        let mut file = File::create(path).map_err(|e| VideoError::DownloadError(e.to_string()))?;
+    //     let mut file = File::create(path).map_err(|e|
+    // VideoError::DownloadError(e.to_string()))?;
 
-        while let Some(chunk) = stream.chunk().await? {
-            file.write_all(&chunk)
-                .map_err(|e| VideoError::DownloadError(e.to_string()))?;
-        }
+    //     while let Some(chunk) = stream.chunk().await? {
+    //         file.write_all(&chunk)
+    //             .map_err(|e| VideoError::DownloadError(e.to_string()))?;
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     /// Get video URL
     pub fn get_video_url(&self) -> String {

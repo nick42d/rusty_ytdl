@@ -10,4 +10,4 @@ mod segment;
 
 #[cfg(feature = "live")]
 pub use streams::{LiveStream, LiveStreamOptions};
-pub use streams::{NonLiveStream, NonLiveStreamOptions, YoutubeStream};
+pub use streams::{NonLiveStream, NonLiveStreamOptions, YoutubeStream, YoutubeStreamEnum};

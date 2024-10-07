@@ -8,7 +8,10 @@ use crate::utils::{get_html, make_absolute_url};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
+use futures::FutureExt;
 use m3u8_rs::parse_media_playlist;
+use std::pin::Pin;
+use std::task::Poll;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
@@ -243,5 +246,15 @@ impl YoutubeStream for LiveStream {
         segment_vector.remove(0);
 
         Ok(Some(buf.into()))
+    }
+}
+
+impl futures::Stream for LiveStream {
+    type Item = Result<Bytes, VideoError>;
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::option::Option<<Self as futures::Stream>::Item>> {
+        self.chunk().poll_unpin(cx).map(Result::transpose)
     }
 }

@@ -15,8 +15,6 @@ rust-version = "1.79.0"
 
 [package.metadata.docs.rs]
 all-features = true
-# rustdoc should build with the docsrs flag.
-rustdoc-args = ["--cfg", "docsrs"]
 
 [workspace]
 members = [".", "cli"]
@@ -53,7 +51,7 @@ mime = "0.3.17"
 bytes = "1.7.1"
 flame = { version = "0.2.2", optional = true }
 flamer = { version = "0.5.0", optional = true }
-futures = { version = "0.3.30", optional = true, default-features = false, features = ["std", "async-await"] }
+futures = { version = "0.3.30", default-features = false, features = ["std", "async-await"] }
 
 [dev-dependencies]
 tokio = { version = "1.39.2", features = ["full"] }
@@ -70,7 +68,6 @@ native-tls = ["reqwest/native-tls"]
 rustls-tls = ["reqwest/rustls-tls"]
 native-tls-vendored = ["reqwest/native-tls-vendored"]
 socks = ["reqwest/socks"]
-stream = ["futures"]
 
 [[example]]
 name = "multiple_downloads"

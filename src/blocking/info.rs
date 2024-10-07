@@ -1,5 +1,7 @@
-use std::path::Path;
 use std::borrow::Cow;
+use std::path::Path;
+
+use bytes::Bytes;
 
 use crate::block_async;
 #[cfg(feature = "live")]
@@ -12,26 +14,29 @@ use crate::Video as AsyncVideo;
 
 #[cfg(feature = "live")]
 use super::stream::LiveStreamOptions;
-use super::stream::{NonLiveStreamOptions, Stream};
+use super::stream::{NonLiveStreamOptions, YoutubeStream};
 
 #[cfg(feature = "ffmpeg")]
 use crate::structs::FFmpegArgs;
 
 #[derive(Clone, Debug, derive_more::Display, PartialEq, Eq)]
-/// If a video was created with a reference to options, it is tied to their lifetime `'opts`.
+/// If a video was created with a reference to options, it is tied to their
+/// lifetime `'opts`.
 pub struct Video<'opts>(AsyncVideo<'opts>);
 
 impl Video<'static> {
-    /// Crate [`Video`] struct to get info or download with default [`VideoOptions`]
+    /// Crate [`Video`] struct to get info or download with default
+    /// [`VideoOptions`]
     pub fn new(url_or_id: impl Into<String>) -> Result<Self, VideoError> {
         Ok(Self(AsyncVideo::new(url_or_id)?))
     }
 }
 
 impl<'opts> Video<'opts> {
-    /// Crate [`Video`] struct to get info or download with custom [`VideoOptions`]
-    /// `VideoOptions` can be passed by value or by reference, if passed by
-    /// reference, returned `Video` will be tied to the lifetime of the `VideoOptions`.
+    /// Crate [`Video`] struct to get info or download with custom
+    /// [`VideoOptions`] `VideoOptions` can be passed by value or by
+    /// reference, if passed by reference, returned `Video` will be tied to
+    /// the lifetime of the `VideoOptions`.
     pub fn new_with_options(
         url_or_id: impl Into<String>,
         options: impl Into<Cow<'opts, VideoOptions>>,
@@ -51,9 +56,9 @@ impl<'opts> Video<'opts> {
         Ok(block_async!(self.0.get_info())?)
     }
 
-    /// Try to turn [`Stream`] implemented [`LiveStream`] or [`NonLiveStream`] depend on the video.
-    /// If function successfully return can download video chunk by chunk
-    /// # Example
+    /// Try to turn [`Stream`] implemented [`LiveStream`] or [`NonLiveStream`]
+    /// depend on the video. If function successfully return can download
+    /// video chunk by chunk # Example
     /// ```ignore
     ///     let video_url = "https://www.youtube.com/watch?v=FZ8BxMU3BYc";
     ///
@@ -65,7 +70,7 @@ impl<'opts> Video<'opts> {
     ///           println!("{:#?}", chunk);
     ///     }
     /// ```
-    pub fn stream(&self) -> Result<Box<dyn Stream + Send + Sync>, VideoError> {
+    pub fn stream(&self) -> Result<Box<dyn YoutubeStream + Send + Sync>, VideoError> {
         let client = self.0.get_client();
 
         let options = self.0.get_options();
@@ -136,9 +141,10 @@ impl<'opts> Video<'opts> {
     }
 
     #[cfg(feature = "ffmpeg")]
-    /// Try to turn [`Stream`] implemented [`LiveStream`] or [`NonLiveStream`] depend on the video with [`FFmpegArgs`].
-    /// If function successfully return can download video with applied ffmpeg filters and formats chunk by chunk
-    /// # Example
+    /// Try to turn [`Stream`] implemented [`LiveStream`] or [`NonLiveStream`]
+    /// depend on the video with [`FFmpegArgs`]. If function successfully
+    /// return can download video with applied ffmpeg filters and formats chunk
+    /// by chunk # Example
     /// ```ignore
     ///     let video_url = "https://www.youtube.com/watch?v=FZ8BxMU3BYc";
     ///
@@ -157,7 +163,7 @@ impl<'opts> Video<'opts> {
     pub async fn stream_with_ffmpeg(
         &self,
         ffmpeg_args: Option<FFmpegArgs>,
-    ) -> Result<Box<dyn Stream + Send + Sync>, VideoError> {
+    ) -> Result<Box<dyn YoutubeStream + Send + Sync>, VideoError> {
         let client = self.0.get_client();
 
         let options = self.0.get_options();
@@ -234,17 +240,17 @@ impl<'opts> Video<'opts> {
         Ok(block_async!(self.0.download(path))?)
     }
 
-    #[cfg(feature = "ffmpeg")]
-    /// Download video with ffmpeg args directly to the file
-    pub async fn download_with_ffmpeg<P: AsRef<Path>>(
-        &self,
-        path: P,
-        ffmpeg_args: Option<FFmpegArgs>,
-    ) -> Result<(), VideoError> {
-        Ok(block_async!(self
-            .0
-            .download_with_ffmpeg(path, ffmpeg_args))?)
-    }
+    // #[cfg(feature = "ffmpeg")]
+    // /// Download video with ffmpeg args directly to the file
+    // pub async fn download_with_ffmpeg<P: AsRef<Path>>(
+    //     &self,
+    //     path: P,
+    //     ffmpeg_args: Option<FFmpegArgs>,
+    // ) -> Result<(), VideoError> {
+    //     Ok(block_async!(self
+    //         .0
+    //         .download_with_ffmpeg(path, ffmpeg_args))?)
+    // }
 
     /// Get video URL
     pub fn get_video_url(&self) -> String {

@@ -1,5 +1,9 @@
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
+use core::pin::Pin;
+use futures::{FutureExt, Stream};
+use std::any::Any;
+use std::task::Poll;
 
 #[cfg(feature = "ffmpeg")]
 use std::sync::Arc;
@@ -173,7 +177,8 @@ impl YoutubeStream for NonLiveStream {
 
         let end = self.end_index().await;
 
-        // Nothing else remain set controllers to the beginning state and send None to finish
+        // Nothing else remain set controllers to the beginning state and send None to
+        // finish
         if end == 0 {
             let mut end = self.end.write().await;
             let mut start = self.start.write().await;
@@ -233,5 +238,90 @@ impl YoutubeStream for NonLiveStream {
 
     fn content_length(&self) -> usize {
         self.content_length() as usize
+    }
+}
+
+impl NonLiveStream {
+    pub fn into_stream_test(self) -> impl Stream<Item = Result<Bytes, VideoError>> {
+        futures::stream::unfold(self, |state| async move {
+            let end = state.end_index().await;
+
+            // Nothing else remain set controllers to the beginning state and send None to
+            // finish
+            if end == 0 {
+                let mut end = state.end.write().await;
+                let mut start = state.start.write().await;
+                *end = state.end_static;
+                *start = state.start_static;
+
+                // Send None to close
+                return None;
+            }
+
+            if end >= state.content_length {
+                let mut end = state.end.write().await;
+                *end = 0;
+            }
+
+            let mut headers = DEFAULT_HEADERS.clone();
+
+            let end = state.end_index().await;
+            let range_end = if end == 0 {
+                "".to_string()
+            } else {
+                end.to_string()
+            };
+
+            headers.insert(
+                reqwest::header::RANGE,
+                format!("bytes={}-{}", state.start_index().await, range_end)
+                    .parse()
+                    .unwrap(),
+            );
+
+            let response = match state
+                .client
+                .get(&state.link)
+                .headers(headers)
+                .send()
+                .await
+                .map_err(VideoError::ReqwestMiddleware)
+            {
+                Ok(res) => res,
+                Err(e) => return Some((Err(e), state)),
+            };
+            let mut response = match response.error_for_status().map_err(VideoError::Reqwest) {
+                Ok(res) => res,
+                Err(e) => return Some((Err(e), state)),
+            };
+
+            let mut buf: BytesMut = BytesMut::new();
+
+            while let Some(chunk) = match response.chunk().await.map_err(VideoError::Reqwest) {
+                Ok(chunk) => chunk,
+                Err(e) => return Some((Err(e), state)),
+            } {
+                buf.extend(chunk);
+            }
+
+            if end != 0 {
+                let mut start = state.start.write().await;
+                *start = end + 1;
+                let mut end = state.end.write().await;
+                *end += state.dl_chunk_size;
+            }
+
+            Some((Ok(buf.into()), state))
+        })
+    }
+}
+
+impl futures::Stream for NonLiveStream {
+    type Item = Result<Bytes, VideoError>;
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::option::Option<<Self as futures::Stream>::Item>> {
+        todo!();
     }
 }

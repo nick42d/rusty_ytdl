@@ -14,7 +14,7 @@ mod non_live;
 pub use live::LiveStream;
 pub use non_live::NonLiveStream;
 
-pub trait Stream {
+pub trait YoutubeStream {
     /// Stream a chunk of the [`Bytes`]
     ///
     /// When the bytes has been exhausted, this will return `None`.

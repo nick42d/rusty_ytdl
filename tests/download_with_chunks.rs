@@ -13,7 +13,7 @@ async fn download_with_chunks() {
 
     let stream = video.stream().await.unwrap();
 
-    while let Some(chunk) = stream.chunk().await.unwrap() {
-        println!("{} byte downloaded", chunk.len());
-    }
+    // while let Some(chunk) = stream.chunk().await.unwrap() {
+    //     println!("{} byte downloaded", chunk.len());
+    // }
 }
