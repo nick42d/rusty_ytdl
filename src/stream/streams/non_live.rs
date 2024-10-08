@@ -18,7 +18,9 @@ use crate::structs::{CustomRetryableStrategy, VideoError};
 
 #[cfg(feature = "ffmpeg")]
 use crate::structs::FFmpegArgs;
+use crate::Video;
 
+use super::YoutubeStreamState;
 #[cfg(feature = "ffmpeg")]
 use super::{FFmpegStream, FFmpegStreamOptions};
 
@@ -127,7 +129,6 @@ impl NonLiveStream {
             })
         }
     }
-
     pub fn content_length(&self) -> u64 {
         self.content_length
     }
@@ -142,7 +143,7 @@ impl NonLiveStream {
 }
 
 #[async_trait]
-impl YoutubeStream for NonLiveStream {
+impl<S> YoutubeStream for NonLiveStream<S> {
     async fn chunk(&self) -> Result<Option<Bytes>, VideoError> {
         #[cfg(feature = "ffmpeg")]
         {
@@ -241,9 +242,44 @@ impl YoutubeStream for NonLiveStream {
     }
 }
 
+pub struct NonLiveStreamWrapper<S> {
+    inner: S,
+    total_content_length: u64,
+}
+
+async fn video_to_stream<'opts>(
+    video: Video<'opts>,
+) -> Result<NonLiveStreamWrapper<impl Stream<Item = Result<Bytes, VideoError>> + Unpin>, VideoError>
+{
+    let stream = video.stream().await?;
+    let non_live = match stream {
+        super::YoutubeStreamEnum::Live(s) => todo!(),
+        super::YoutubeStreamEnum::NonLive(s) => s,
+    };
+    let total_content_length = non_live.content_length;
+    let inner = non_live.into_stream_test();
+    Ok(NonLiveStreamWrapper {
+        inner,
+        total_content_length,
+    })
+}
+
+impl<S> Stream for NonLiveStreamWrapper<S>
+where
+    S: Stream<Item = Result<Bytes, VideoError>> + Unpin,
+{
+    type Item = S::Item;
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.inner).poll_next(cx)
+    }
+}
+
 impl NonLiveStream {
-    pub fn into_stream_test(self) -> impl Stream<Item = Result<Bytes, VideoError>> {
-        futures::stream::unfold(self, |state| async move {
+    pub fn into_stream_test(self) -> impl Stream<Item = Result<Bytes, VideoError>> + Unpin {
+        futures::stream::unfold(Pin::new(&mut self), |state| async move {
             let end = state.end_index().await;
 
             // Nothing else remain set controllers to the beginning state and send None to

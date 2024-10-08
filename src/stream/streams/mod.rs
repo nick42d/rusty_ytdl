@@ -52,6 +52,12 @@ pub enum YoutubeStreamEnum {
     NonLive(non_live::NonLiveStream),
 }
 
+pub enum YoutubeStreamState<S> {
+    Init,
+    Running(S),
+    Finished,
+}
+
 #[cfg(feature = "ffmpeg")]
 pub struct FFmpegStreamOptions {
     pub client: reqwest_middleware::ClientWithMiddleware,
