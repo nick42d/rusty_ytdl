@@ -343,25 +343,6 @@ impl<'opts> Video<'opts> {
         let start = 0;
         let end = start + dl_chunk_size;
 
-        let mut content_length = format
-            .content_length
-            .unwrap_or("0".to_string())
-            .parse::<u64>()
-            .unwrap_or(0);
-
-        // Get content length from source url if content_length is 0
-        if content_length == 0 {
-            let content_length_response = client
-                .get(&link)
-                .send()
-                .await
-                .map_err(VideoError::ReqwestMiddleware)?
-                .content_length()
-                .ok_or(VideoError::VideoNotFound)?;
-
-            content_length = content_length_response;
-        }
-
         let stream = NonLiveStream::new(NonLiveStreamOptions {
             client: Some(client.clone()),
             link,
@@ -374,6 +355,45 @@ impl<'opts> Video<'opts> {
         })?;
 
         Ok(YoutubeStreamEnum::NonLive(stream))
+    }
+
+    pub async fn content_length(&self) -> Result<u64, VideoError> {
+        let info = self.get_info().await?;
+
+        let format = choose_format(&info.formats, &self.options)
+            .map_err(|_op| VideoError::VideoSourceNotFound)?;
+
+        let mut content_length = format
+            .content_length
+            .unwrap_or("0".to_string())
+            .parse::<u64>()
+            .unwrap_or(0);
+
+        // Only check for HLS formats for live streams
+        if format.is_hls {
+            #[cfg(feature = "live")]
+            {
+                return Ok(0);
+            }
+            #[cfg(not(feature = "live"))]
+            {
+                return Err(VideoError::LiveStreamNotSupported);
+            }
+        }
+
+        // Get content length from source url if content_length is 0
+        if content_length == 0 {
+            let content_length_response = self.client
+                .get(format.url)
+                .send()
+                .await
+                .map_err(VideoError::ReqwestMiddleware)?
+                .content_length()
+                .ok_or(VideoError::VideoNotFound)?;
+
+            content_length = content_length_response;
+        }
+        Ok(content_length)
     }
 
     #[cfg(feature = "ffmpeg")]

@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
+use tokio::pin;
 use core::pin::Pin;
-use futures::{FutureExt, Stream};
+use futures::{pin_mut, FutureExt, Stream, StreamExt, TryFutureExt};
 use std::any::Any;
 use std::task::Poll;
 
@@ -242,14 +243,14 @@ impl<S> YoutubeStream for NonLiveStream<S> {
     }
 }
 
-pub struct NonLiveStreamWrapper<S> {
-    inner: S,
+pub struct NonLiveStreamWrapper<'a, S> {
+    inner: Pin<&'a mut S>,
     total_content_length: u64,
 }
 
 async fn video_to_stream<'opts>(
     video: Video<'opts>,
-) -> Result<NonLiveStreamWrapper<impl Stream<Item = Result<Bytes, VideoError>> + Unpin>, VideoError>
+) -> Result<NonLiveStreamWrapper<impl Stream<Item = Result<Bytes, VideoError>>>, VideoError>
 {
     let stream = video.stream().await?;
     let non_live = match stream {
@@ -257,7 +258,7 @@ async fn video_to_stream<'opts>(
         super::YoutubeStreamEnum::NonLive(s) => s,
     };
     let total_content_length = non_live.content_length;
-    let inner = non_live.into_stream_test();
+    let inner = Pin::new(&mut non_live.into_stream_test());
     Ok(NonLiveStreamWrapper {
         inner,
         total_content_length,
@@ -273,82 +274,86 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
-        Pin::new(&mut self.inner).poll_next(cx)
+        self.inner.poll_next(cx)
     }
 }
 
+async fn chunk(state: NonLiveStream) -> Option<(Result<Bytes, VideoError>, NonLiveStream)> {
+    let end = state.end_index().await;
+
+    // Nothing else remain set controllers to the beginning state and send None to
+    // finish
+    if end == 0 {
+        let mut end = state.end.write().await;
+        let mut start = state.start.write().await;
+        *end = state.end_static;
+        *start = state.start_static;
+
+        // Send None to close
+        return None;
+    }
+
+    if end >= state.content_length {
+        let mut end = state.end.write().await;
+        *end = 0;
+    }
+
+    let mut headers = DEFAULT_HEADERS.clone();
+
+    let end = state.end_index().await;
+    let range_end = if end == 0 {
+        "".to_string()
+    } else {
+        end.to_string()
+    };
+
+    headers.insert(
+        reqwest::header::RANGE,
+        format!("bytes={}-{}", state.start_index().await, range_end)
+            .parse()
+            .unwrap(),
+    );
+
+    let response = match state
+        .client
+        .get(&state.link)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(VideoError::ReqwestMiddleware)
+    {
+        Ok(res) => res,
+        Err(e) => return Some((Err(e), state)),
+    };
+    let mut response = match response.error_for_status().map_err(VideoError::Reqwest) {
+        Ok(res) => res,
+        Err(e) => return Some((Err(e), state)),
+    };
+
+    let mut buf: BytesMut = BytesMut::new();
+
+    while let Some(chunk) = match response.chunk().await.map_err(VideoError::Reqwest) {
+        Ok(chunk) => chunk,
+        Err(e) => return Some((Err(e), state)),
+    } {
+        buf.extend(chunk);
+    }
+
+    if end != 0 {
+        let mut start = state.start.write().await;
+        *start = end + 1;
+        let mut end = state.end.write().await;
+        *end += state.dl_chunk_size;
+    }
+
+    Some((Ok(buf.into()), state))
+}
+        
+
 impl NonLiveStream {
-    pub fn into_stream_test(self) -> impl Stream<Item = Result<Bytes, VideoError>> + Unpin {
-        futures::stream::unfold(Pin::new(&mut self), |state| async move {
-            let end = state.end_index().await;
-
-            // Nothing else remain set controllers to the beginning state and send None to
-            // finish
-            if end == 0 {
-                let mut end = state.end.write().await;
-                let mut start = state.start.write().await;
-                *end = state.end_static;
-                *start = state.start_static;
-
-                // Send None to close
-                return None;
-            }
-
-            if end >= state.content_length {
-                let mut end = state.end.write().await;
-                *end = 0;
-            }
-
-            let mut headers = DEFAULT_HEADERS.clone();
-
-            let end = state.end_index().await;
-            let range_end = if end == 0 {
-                "".to_string()
-            } else {
-                end.to_string()
-            };
-
-            headers.insert(
-                reqwest::header::RANGE,
-                format!("bytes={}-{}", state.start_index().await, range_end)
-                    .parse()
-                    .unwrap(),
-            );
-
-            let response = match state
-                .client
-                .get(&state.link)
-                .headers(headers)
-                .send()
-                .await
-                .map_err(VideoError::ReqwestMiddleware)
-            {
-                Ok(res) => res,
-                Err(e) => return Some((Err(e), state)),
-            };
-            let mut response = match response.error_for_status().map_err(VideoError::Reqwest) {
-                Ok(res) => res,
-                Err(e) => return Some((Err(e), state)),
-            };
-
-            let mut buf: BytesMut = BytesMut::new();
-
-            while let Some(chunk) = match response.chunk().await.map_err(VideoError::Reqwest) {
-                Ok(chunk) => chunk,
-                Err(e) => return Some((Err(e), state)),
-            } {
-                buf.extend(chunk);
-            }
-
-            if end != 0 {
-                let mut start = state.start.write().await;
-                *start = end + 1;
-                let mut end = state.end.write().await;
-                *end += state.dl_chunk_size;
-            }
-
-            Some((Ok(buf.into()), state))
-        })
+    pub fn into_stream_test(self) -> impl Stream<Item = Result<Bytes, VideoError>> {
+        // futures::stream::unfold(self, |state| chunk(state))
+        futures::stream::iter(vec![1,2,3]).then(|x| reqwest::get(x.to_string()).map_err(|e| VideoError::VideoNotFound)).map(|x| Ok(Bytes::default()))
     }
 }
 
