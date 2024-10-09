@@ -1,6 +1,6 @@
 [package]
 name = "youtui-vendored-rusty_ytdl"
-version = "0.7.3-youtui-vendored.1"
+version = "0.7.4-youtui-vendored.1"
 authors = ["Mithronn"]
 edition = "2021"
 description = "VENDORED LIBRARY FOR YOUTUI - DO NOT USE"
