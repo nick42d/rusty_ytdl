@@ -44,6 +44,29 @@ pub trait YoutubeStream {
     fn content_length(&self) -> usize {
         0
     }
+
+    fn into_futures_stream(self) -> impl futures::Stream<Item = Result<Bytes, VideoError>>
+    where
+        Self: Sized,
+    {
+        // Second value of initialisation tuple represents if the previous iteration of
+        // the stream errored. If so, stream will close, as no future iterations of
+        // the stream are expected to return Ok.
+        futures::stream::unfold((self, false), |(state, err)| async move {
+            if err {
+                return None;
+            };
+            let chunk = state.chunk().await;
+            match chunk {
+                // Return error value on this iteration, on the next iteration return None.
+                Err(e) => Some((Err(e), (state, true))),
+                // Happy path
+                Ok(Some(bytes)) => Some((Ok(bytes), (state, false))),
+                // YoutubeStream has closed.
+                Ok(None) => None,
+            }
+        })
+    }
 }
 
 pub enum YoutubeStreamEnum {
