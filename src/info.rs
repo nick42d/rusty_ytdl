@@ -220,7 +220,7 @@ impl<'opts> Video<'opts> {
                         .get("tv_embedded")
                         .cloned()
                         .unwrap_or_default(),
-                    self.options.request_options.po_token.as_ref(),
+                    self.options.request_options.po_token.as_ref()
                 )
                 .await?;
 
