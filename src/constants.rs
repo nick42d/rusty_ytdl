@@ -71,6 +71,23 @@ pub static INNERTUBE_CLIENT: Lazy<HashMap<&str, (&str, &str, &str)>> =
                 ),
             ),
             (
+                "android_sdkless",
+                (
+                    "20.10.38",
+                    "3",
+                    r#""context": {
+                        "client": {
+                            "clientName": "ANDROID",
+                            "clientVersion": "20.10.38",
+                            "userAgent": "com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip",
+                            "osName": "Android",
+                            "osVersion": "11",
+                            "hl": "en"
+                        }
+                    },"#,
+                ),
+            ),
+            (
                 "ios",
                 (
                     "19.29.1",
