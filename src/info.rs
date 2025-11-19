@@ -7,7 +7,11 @@ use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use scraper::{Html, Selector};
 use serde_json::json;
-use std::{borrow::{Borrow, Cow}, path::Path, time::Duration};
+use std::{
+    borrow::{Borrow, Cow},
+    path::Path,
+    time::Duration,
+};
 use url::Url;
 
 #[cfg(feature = "live")]
@@ -23,7 +27,11 @@ use crate::{
         CustomRetryableStrategy, PlayerResponse, VideoError, VideoInfo, VideoOptions, YTConfig,
     },
     utils::{
-        between, choose_format, clean_video_details, get_functions, get_html, get_html5player, get_random_v6_ip, get_video_id, get_visitor_data, get_ytconfig, is_age_restricted_from_html, is_live, is_not_yet_broadcasted, is_play_error, is_player_response_error, is_private_video, is_rental, parse_live_video_formats, parse_video_formats, sort_formats
+        between, choose_format, clean_video_details, get_functions, get_html, get_html5player,
+        get_random_v6_ip, get_video_id, get_visitor_data, get_ytconfig,
+        is_age_restricted_from_html, is_live, is_not_yet_broadcasted, is_play_error,
+        is_player_response_error, is_private_video, is_rental, parse_live_video_formats,
+        parse_video_formats, sort_formats,
     },
 };
 
@@ -185,12 +193,15 @@ impl<'opts> Video<'opts> {
             return Err(VideoError::VideoIsPrivate);
         }
 
-        // POToken experiment detected fallback to ios client (Webpage contains broken formats)
+        // POToken experiment detected fallback to android_sdkless client (Webpage contains broken formats)
         if !is_live(&player_response) {
             let ios_ytconfig = self
                 .get_player_ytconfig(
                     &response,
-                    INNERTUBE_CLIENT.get("ios").cloned().unwrap_or_default(),
+                    INNERTUBE_CLIENT
+                        .get("android_sdkless")
+                        .cloned()
+                        .unwrap_or_default(),
                     self.options.request_options.po_token.as_ref()
                 )
                 .await?;
